@@ -91,14 +91,14 @@ static void print_breakdown(const vector<T> &all_ops, size_t thread_count)
     cout << " cnt=" << count << endl;
   }
 
-  cout << "Average iops: " << (all_ops.size() / dur2sec(totaltime)) << endl;
+  cout << "Average iops: " << (all_ops.size() * thread_count / dur2sec(totaltime)) << endl;
 
   cout << "Average latency: " << (dur2msec(totaltime) / all_ops.size()) << " ms" << endl;
 
   cout << "Total writes: " << all_ops.size() << endl;
 
   if (thread_count > 1)
-    cout << "iops per thread: " << (all_ops.size() / thread_count / dur2sec(totaltime)) << endl;
+    cout << "iops per thread: " << (all_ops.size() / dur2sec(totaltime)) << endl;
 }
 
 static void fill_urandom(char *buf, size_t len)
@@ -167,7 +167,10 @@ static void do_bench(const unique_ptr<bench_settings> &settings, const vector<st
     for (int i = 0; i < settings->threads; i++)
     {
       listofops.push_back(vector<steady_clock::duration>());
+    }
 
+    for (int i = 0; i < settings->threads; i++)
+    {
       sigset_t new_set;
       sigset_t old_set;
       sigfillset(&new_set);
@@ -177,7 +180,7 @@ static void do_bench(const unique_ptr<bench_settings> &settings, const vector<st
         throw std::system_error(err, std::system_category(), "Failed to set thread sigmask");
       }
 
-      threads.push_back(thread(_do_bench, ref(settings), vector<string>(names.begin()+i*16, names.begin()+i*16+16), ref(ioctx), ref(listofops.back())));
+      threads.push_back(thread(_do_bench, ref(settings), vector<string>(names.begin()+i*16, names.begin()+i*16+16), ref(ioctx), ref(listofops[i])));
 
       if ((err = pthread_sigmask(SIG_SETMASK, &old_set, NULL)))
       {
