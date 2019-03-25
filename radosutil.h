@@ -3,6 +3,7 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <json/json.h>
 
 namespace Json {
 class Reader;
