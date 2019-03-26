@@ -1,5 +1,4 @@
 #include <chrono>
-#include <cmath>
 #include <csignal>
 #include <iostream>
 #include <librados.hpp>
@@ -64,7 +63,10 @@ static void print_breakdown(const vector<T> &all_ops, size_t thread_count)
       mindur = res;
 
     const auto nsec = dur2nsec(res);
-    const size_t baserange = powl(10, size_t(log10((long double)nsec)));
+    size_t baserange = 10;
+    while (nsec >= baserange)
+      baserange *= 10;
+    baserange /= 10;
     const size_t range = (nsec / baserange) * baserange;
 
     const auto cnt = ++(dur2count[range]);
@@ -209,27 +211,73 @@ static void _main(int argc, const char *argv[])
 {
   const unique_ptr<bench_settings> settings(new bench_settings);
 
-  switch (argc)
-  {
-  case 3:
-    settings->pool = argv[1];
-    settings->mode = argv[2];
-    break;
-  case 4:
-    settings->pool = argv[1];
-    settings->mode = argv[2];
-    settings->specific_bench_item = argv[3];
-    break;
-  default:
-    cerr << "Usage: " << argv[0]
-         << " [poolname] [mode=host|osd] <specific item name to test>" << endl;
-    throw "Wrong cmdline";
-  }
-
+  // Default settings
   settings->secs = 10;
   settings->threads = 1;
   settings->block_size = 4096;
   settings->object_size = 4096 * 1024;
+
+  int ai = 1;
+  while (ai < argc)
+  {
+    if (argv[ai][0] == '-')
+    {
+      if (!strcmp(argv[ai], "-d"))
+      {
+        // duration
+        ++ai;
+        if (ai >= argc || sscanf(argv[ai], "%i", &settings->secs) != 1 ||
+            settings->secs < 1)
+          throw "Wrong duration";
+      }
+      else if (!strcmp(argv[ai], "-t"))
+      {
+        // threads
+        ++ai;
+        if (ai >= argc || sscanf(argv[ai], "%i", &settings->threads) != 1 ||
+            settings->threads < 1)
+          throw "Wrong thread number";
+      }
+      else if (!strcmp(argv[ai], "-b"))
+      {
+        // block size
+        ++ai;
+        if (ai >= argc || sscanf(argv[ai], "%i", (int*)&settings->block_size) != 1 ||
+            settings->block_size < 1)
+          throw "Wrong block size";
+      }
+      else if (!strcmp(argv[ai], "-o"))
+      {
+        // object size
+        ++ai;
+        if (ai >= argc || sscanf(argv[ai], "%i", (int*)&settings->object_size) != 1 ||
+            settings->object_size < 1)
+          throw "Wrong object size";
+      }
+    }
+    else
+    {
+      if (settings->pool.empty())
+        settings->pool = argv[ai];
+      else if (settings->mode.empty())
+        settings->mode = argv[ai];
+      else if (settings->specific_bench_item.empty())
+        settings->specific_bench_item = argv[ai];
+    }
+    ai++;
+  }
+
+  if (settings->object_size < settings->block_size)
+  {
+    throw "Block size must not be greater than object size";
+  }
+
+  if (settings->pool.empty() || settings->mode.empty())
+  {
+    cerr << "Usage: " << argv[0]
+         << " [poolname] [mode=host|osd] <specific item name to test>" << endl;
+    throw "Wrong cmdline";
+  }
 
   Rados rados;
   int err;

@@ -2,7 +2,7 @@
 CXXFLAGS += -std=c++11 -O3 -g -Wall -Wextra -I/usr/include/rados -I/usr/include/jsoncpp -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free
 # -Wa,-adhln -g
 # -lprofiler
-LDFLAGS += -pthread -lrados -ljsoncpp -lstdc++ -lm -g -ltcmalloc
+LDFLAGS += -pthread -lrados -ljsoncpp -lstdc++ -g -ltcmalloc
 
 #CC=clang-6.0
 
