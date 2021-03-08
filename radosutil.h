@@ -4,39 +4,51 @@
 #include <set>
 #include <string>
 #include <json/json.h>
+#include <iostream>
+#include <librados.hpp>
 
 namespace Json {
-class Reader;
-class FastWriter;
-class Value;
+    class Reader;
+
+    class FastWriter;
+
+    class Value;
 } // namespace Json
 
-namespace librados {
-class Rados;
-}
+//namespace librados {
+//class Rados;
+//}
 
 class RadosUtils {
 public:
-  explicit RadosUtils(librados::Rados *rados_);
-  unsigned int get_obj_acting_primary(const std::string &name,
-                                      const std::string &pool);
-  std::map<std::string, std::string> get_osd_location(unsigned int osd);
-  std::set<unsigned int> get_osds(const std::string &pool);
-  unsigned int get_pool_size(const std::string &pool);
+    explicit RadosUtils(librados::Rados *rados_);
+
+    unsigned int get_obj_acting_primary(const std::string &name,
+                                        const std::string &pool);
+
+    std::map <std::string, std::string> get_osd_location(unsigned int osd);
+
+    std::set<unsigned int> get_osds(const std::string &pool);
+
+    unsigned int get_pool_size(const std::string &pool);
+
+    unsigned int set_pool_size_1(const std::string &pool);
 
 private:
-  Json::Value do_mon_command(Json::Value &cmd);
-  librados::Rados *rados;
-  std::unique_ptr<Json::Reader> json_reader;
-  std::unique_ptr<Json::FastWriter> json_writer;
+    Json::Value do_mon_command(Json::Value &cmd);
+
+    librados::Rados *rados;
+    std::unique_ptr <Json::Reader> json_reader;
+    std::unique_ptr <Json::FastWriter> json_writer;
 };
 
 class MyRadosException : public std::exception {
 public:
-  MyRadosException(int err, const std::string &msg)
-      : descr("Rados err " + std::to_string(err) + ": " + msg){};
-  const char *what() const throw() { return descr.c_str(); }
+    MyRadosException(int err, const std::string &msg)
+            : descr("Rados err " + std::to_string(err) + ": " + msg) {};
+
+    const char *what() const throw() { return descr.c_str(); }
 
 private:
-  std::string descr;
+    std::string descr;
 };
