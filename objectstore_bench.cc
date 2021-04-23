@@ -7,6 +7,8 @@
 #include <memory>
 #include <mutex>
 #include <thread>
+#include <fcntl.h>
+
 
 #include "os/ObjectStore.h"
 
@@ -17,6 +19,9 @@
 
 #define dout_context g_ceph_context
 #define dout_subsys ceph_subsys_filestore
+
+
+const ssize_t max_read = 1024 * 1024;
 
 static void usage() {
   cout << "usage: ceph_objectstore_bench [flags]\n" << std::endl;
@@ -34,16 +39,16 @@ static void usage() {
   cout << "[xattr_bench]" << std::endl;
   cout << "  --xattr_bench\n"
           "        open xattr_bench\n"
-          "  --threads\n"
-          "        the number of thread, default 1"
-          "  --key"
-          "        the key of xattr, default nums+objname"
-          "  --value"
-          "        the value of xattr, default \"zzzzzz...\", length 1024"
-          "  --value_path"
-          "        you can specific a file to be the value"
-          "  --nums"
-          "        the number of per thread setting xattr times, default 1000" << std::endl;
+          "  --xattr_threads\n"
+          "        the number of thread, default 1\n"
+          "  --key\n"
+          "        the key of xattr, default nums+objname\n"
+          "  --value\n"
+          "        the value of xattr, default \"zzzzzz...\", length 1024\n"
+          "  --value_path\n"
+          "        you can specific a file to be the value\n"
+          "  --nums\n"
+          "        the number of per thread setting xattr times, default 1000\n" << std::endl;
   generic_server_usage();
 }
 
@@ -106,6 +111,7 @@ struct xattr_config {
       : value_size(1024), nums(1000),
         value((string (1024, 'z'))),
         key(string ("key")),
+        value_path(""),
         threads(1)
         {}
 };
@@ -208,6 +214,26 @@ void xattr_bench_worker(ObjectStore *os,
 
 }
 
+int get_fd_data(int fd, bufferlist &bl)
+{
+  uint64_t total = 0;
+  do {
+    ssize_t bytes = bl.read_fd(fd, max_read);
+    if (bytes < 0) {
+      std::cout << "read_fd error " << std::endl;
+      return bytes;
+    }
+
+    if (bytes == 0)
+      break;
+
+    total += bytes;
+  } while(true);
+
+  ceph_assert(bl.length() == total);
+  return 0;
+}
+
 int main(int argc, const char *argv[]) {
   Config cfg;
   xattr_config xcfg;
@@ -267,7 +293,7 @@ int main(int argc, const char *argv[]) {
     } else if (xattr_bench == true && (ceph_argparse_witharg(args, i, &val, "--nums", (char *) nullptr))) {
       xcfg.nums = atoi(val.c_str());
     } else if (xattr_bench == true && (ceph_argparse_witharg(args, i, &val, "--value_path", (char *) nullptr))) {
-      xcfg.value_path = atoi(val.c_str());
+      xcfg.value_path = val;
     } else {
       derr << "Error: can't understand argument: " << *i << "\n" << dendl;
       exit(1);
@@ -395,8 +421,17 @@ int main(int argc, const char *argv[]) {
     using namespace std::chrono;
 
     bufferlist bl;
-    if(value)
-    bl.append(xcfg.value);
+    if(xcfg.value_path != ""){
+      int fd = INT_MIN;
+      fd = open(xcfg.value_path.c_str(), O_RDONLY);
+      int r = get_fd_data(fd, bl);
+      if (r < 0) {
+        std::cout << "falue to read value file!" << std::endl;
+        goto clean_exit;
+      }
+    }else{
+      bl.append(xcfg.value);
+    }
     auto t1 = high_resolution_clock::now();
     for (int i = 0; i < xcfg.threads; i++) {
       workers.emplace_back(xattr_bench_worker, os.get(), cid, oids[i],
@@ -410,10 +445,12 @@ int main(int argc, const char *argv[]) {
     auto duration = duration_cast<microseconds>(t2 - t1);
     auto per_time = duration.count() / xcfg.nums / xcfg.threads;
     std::cout << "***************************************" << std::endl;
-    std::cout << "total time: " << duration.count() << std::endl;
-    std::cout << "per time of k-v : " << per_time << std::endl;
+    std::cout << "total time: " << duration.count() << " μs" <<std::endl;
+    std::cout << "number of k-v: " << (xcfg.nums * xcfg.threads) << std::endl;
+    std::cout << "per time of k-v: " << per_time << " μs" << std::endl;
     std::cout << "key.size: " << xcfg.key.length() << std::endl;
-    std::cout << "value.size: " << xcfg.value.size() <<std::endl;
+    std::cout << "value.size: " << bl.length() <<std::endl;
+    std::cout << "threads: " << xcfg.threads << std::endl;
     std::cout << "***************************************" << std::endl;
 
 
@@ -443,6 +480,7 @@ int main(int argc, const char *argv[]) {
             << iops << " iops" << dendl;
   }
 
+clean_exit:
   // remove the objects
   ObjectStore::Transaction t;
   for (const auto &oid : oids)
